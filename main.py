@@ -1,157 +1,239 @@
 import sys
-from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QLabel, QDialog, QScrollArea, QHBoxLayout
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
-
+import json
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QPushButton, QVBoxLayout, 
+    QLabel, QDialog, QScrollArea, QHBoxLayout
+)
+from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtGui import QIcon, QLinearGradient, QPalette, QColor
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from game_window import HanoiTowersGame
 
 class RulesDialog(QDialog):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Правила игры")
         self.setGeometry(100, 100, 600, 300)
-
+        
+        self.set_gradient_background()
+        
         rules_text = """Правила игры "Ханойские башни":
-1. Начальная позиция: все диски располагаются на одном из стержней (обычно на левом) в порядке убывания размера, 
-то есть самый большой диск внизу, а самый маленький — сверху;
+1. Начальная позиция: все диски располагаются на одном из стержней (обычно на левом)
+в порядке убывания размера, то есть самый большой диск внизу, а самый маленький — сверху;
 2. Перемещение дисков: игрок может перемещать только один диск за раз. 
 Диск можно взять с верхней части стержня и переместить его на другой стержень. 
-Перемещать диски можно, зажав определённый диск и перенести его на новую позицию, а также нажав на необходимый диск, а затем нажать на новое место;
+Перемещать диски можно, зажав определённый диск и перенести 
+его на новую позицию с помощью мыши и\или "тачпада";
 3. Запрет на размещение: никогда нельзя помещать больший диск на меньший. 
 Диски должны всегда располагаться в порядке убывания размера;
-4. Цель перемещения: игрок должен переместить все диски на другой стержень за минимальное количество времени (обычно на правый).
+4. Цель перемещения: игрок должен переместить все диски на другой стержень за 
+минимальное количество времени (обычно на правый).
 """
         layout = QVBoxLayout()
         scroll = QScrollArea()
         rules_label = QLabel(rules_text)
+        rules_label.setStyleSheet("background: transparent; color: white;")
         scroll.setWidget(rules_label)
         scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
         layout.addWidget(scroll)
 
         menu_button = QPushButton("Меню")
+        menu_button.setStyleSheet("""
+            QPushButton {
+                background: #6A5ACD;
+                color: white;
+                border: 1px solid #483D8B;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background: #7B68EE;
+            }
+        """)
         menu_button.clicked.connect(self.accept)
-        layout.addWidget(menu_button, alignment=Qt.AlignmentFlag.AlignCenter)  # Выравнивание кнопки по центру
+        layout.addWidget(menu_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.setLayout(layout)
-
+    
+    def set_gradient_background(self):
+        gradient = QLinearGradient(0, 0, self.width(), self.height())
+        gradient.setColorAt(0, QColor(75, 0, 130))  # Фиолетовый
+        gradient.setColorAt(1, QColor(25, 25, 112))  # Темно-синий
+        
+        palette = self.palette()
+        palette.setBrush(QPalette.ColorRole.Window, gradient)
+        self.setPalette(palette)
 
 class RecordsDialog(QDialog):
-    def __init__(self):
+    def __init__(self, records):
         super().__init__()
         self.setWindowTitle("Рекорды")
-        self.setGeometry(100, 100, 400, 200)
-
-        records_text = "Здесь будут ваши рекорды:\n\n1. Игрок 1 - 10 ходов\n2. Игрок 2 - 15 ходов"
-        layout = QVBoxLayout()
+        self.setGeometry(100, 100, 400, 300)
+        
+        self.set_gradient_background()
+        
+        self.records = records
+        
+        main_layout = QVBoxLayout()
+        
+        title_label = QLabel("Рекорды по уровням:")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("""
+            font-weight: bold; 
+            font-size: 16px; 
+            color: white;
+            background: transparent;
+        """)
+        main_layout.addWidget(title_label)
+        
+        main_layout.addSpacing(20)
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background: transparent; border: none;")
+        
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        records_text = ""
+        for level, data in sorted(self.records.items(), key=lambda x: int(x[0])):
+            if isinstance(data, dict):
+                time = data.get('time', 0)
+            else:
+                time = data
+                
+            minutes = time // 60
+            seconds = time % 60
+            records_text += f"Уровень {level}: {minutes:02}:{seconds:02}\n"
+        
+        if not records:
+            records_text = "Рекорды пока не установлены"
+            
         records_label = QLabel(records_text)
-        layout.addWidget(records_label)
+        records_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        records_label.setStyleSheet("color: white; background: transparent;")
+        content_layout.addWidget(records_label)
+        
+        scroll.setWidget(content_widget)
+        main_layout.addWidget(scroll)
 
+        main_layout.addSpacing(20)
         menu_button = QPushButton("Меню")
+        menu_button.setStyleSheet("""
+            QPushButton {
+                background: #6A5ACD;
+                color: white;
+                border: 1px solid #483D8B;
+                padding: 5px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background: #7B68EE;
+            }
+        """)
         menu_button.clicked.connect(self.accept)
-        layout.addWidget(menu_button, alignment=Qt.AlignmentFlag.AlignCenter)  # Выравнивание кнопки по центру
+        main_layout.addWidget(menu_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self.setLayout(layout)
-
+        self.setLayout(main_layout)
+    
+    def set_gradient_background(self):
+        gradient = QLinearGradient(0, 0, self.width(), self.height())
+        gradient.setColorAt(0, QColor(75, 0, 130))
+        gradient.setColorAt(1, QColor(25, 25, 112))
+        
+        palette = self.palette()
+        palette.setBrush(QPalette.ColorRole.Window, gradient)
+        self.setPalette(palette)
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Ханойские башни")
-        self.setGeometry(100, 100, 400, 300)
-
-        # Основной layout
+        self.setGeometry(100, 100, 800, 600)
+        
+        self.set_gradient_background()
+        
         self.main_layout = QVBoxLayout()
 
-        # Создание кнопок
         self.play_button = QPushButton("Играть")
         self.rules_button = QPushButton("Правила игры")
         self.records_button = QPushButton("Рекорды")
         self.exit_button = QPushButton("Выход")
 
-        # Установка начальной ширины для кнопок
-        self.button_width = 200  # Начальная ширина кнопок
-        self.play_button.setFixedWidth(self.button_width)
-        self.rules_button.setFixedWidth(self.button_width)
-        self.records_button.setFixedWidth(self.button_width)
-        self.exit_button.setFixedWidth(self.button_width)
+        button_style = """
+            QPushButton {
+                background: #6A5ACD;
+                color: white;
+                border: 1px solid #483D8B;
+                padding: 10px;
+                border-radius: 5px;
+                font-size: 16px;
+                min-width: 200px;
+                min-height: 40px;
+            }
+            QPushButton:hover {
+                background: #7B68EE;
+            }
+        """
+        
+        self.play_button.setStyleSheet(button_style)
+        self.rules_button.setStyleSheet(button_style)
+        self.records_button.setStyleSheet(button_style)
+        self.exit_button.setStyleSheet(button_style)
 
-        # Подключение кнопок к функциям
         self.play_button.clicked.connect(self.start_game)
         self.rules_button.clicked.connect(self.show_rules)
         self.records_button.clicked.connect(self.show_records)
         self.exit_button.clicked.connect(self.close)
 
-        # Добавление кнопок с выравниванием по центру
         self.main_layout.addWidget(self.play_button, alignment=Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(self.rules_button, alignment=Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(self.records_button, alignment=Qt.AlignmentFlag.AlignCenter)
         self.main_layout.addWidget(self.exit_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Создание layout для кнопок в правом углу
-        corner_layout = QHBoxLayout()
-        corner_layout.addStretch()  # Добавляем растяжку, чтобы кнопки были справа
-
-        # Создание квадратных кнопок
-        self.corner_button1 = QPushButton()
-        self.corner_button2 = QPushButton()
-
-        # Установка фиксированного размера для кнопок (квадратные)
-        button_size = 50  # Размер кнопок
-        self.corner_button1.setFixedSize(button_size, button_size)
-        self.corner_button2.setFixedSize(button_size, button_size)
-
-        # Подключение действий к кнопкам
-        self.corner_button1.clicked.connect(self.on_corner_button1_clicked)
-        self.corner_button2.clicked.connect(self.on_corner_button2_clicked)
-
-        # Добавление кнопок в правый угол
-        corner_layout.addWidget(self.corner_button1)
-        corner_layout.addWidget(self.corner_button2)
-
-        # Добавление corner_layout в основной layout
-        self.main_layout.addLayout(corner_layout)
-
         self.setLayout(self.main_layout)
+    
+    def set_gradient_background(self):
+        gradient = QLinearGradient(0, 0, self.width(), self.height())
+        gradient.setColorAt(0, QColor(75, 0, 130))
+        gradient.setColorAt(1, QColor(25, 25, 112))
+        
+        palette = self.palette()
+        palette.setBrush(QPalette.ColorRole.Window, gradient)
+        self.setPalette(palette)
 
     def start_game(self):
-        # Здесь можно добавить логику для начала игры
-        print("Игра начата!")
+        self.game_window = HanoiTowersGame()
+        self.game_window.return_to_menu.connect(self.show)
+        self.game_window.show()
+        self.hide()
 
     def show_rules(self):
         dialog = RulesDialog()
-        dialog.exec()  # В PyQt6 используется exec() вместо exec_()
+        dialog.exec()
 
     def show_records(self):
-        dialog = RecordsDialog()
-        dialog.exec()  # В PyQt6 используется exec() вместо exec_()
-
-    def on_corner_button1_clicked(self):
-        # Действие для первой кнопки
-        print("Кнопка 1 нажата!")
-        # Загрузка изображения на кнопку
-        self.corner_button1.setIcon(QIcon(""))  # Укажите путь к изображению
-        self.corner_button1.setIconSize(self.corner_button1.size())
-
-    def on_corner_button2_clicked(self):
-        # Действие для второй кнопки
-        print("Кнопка 2 нажата!")
-        # Загрузка изображения на кнопку
-        self.corner_button2.setIcon(QIcon(""))  # Укажите путь к изображению
-        self.corner_button2.setIconSize(self.corner_button2.size())
+        try:
+            with open('records.json', 'r') as f:
+                records = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            records = {}
+            
+        dialog = RecordsDialog(records)
+        dialog.exec()
 
     def resizeEvent(self, event):
-        # Переопределяем метод resizeEvent для изменения размера кнопок
         super().resizeEvent(event)
-
-        # Вычисляем новый размер кнопок на основе размера окна
-        new_width = self.width() // 4  # Пример: ширина кнопок зависит от ширины окна
+        new_width = self.width() // 4
         self.play_button.setFixedWidth(new_width)
         self.rules_button.setFixedWidth(new_width)
         self.records_button.setFixedWidth(new_width)
         self.exit_button.setFixedWidth(new_width)
 
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    main_window = MainWindow()
-    main_window.show()
+    window = MainWindow()
+    window.show()
     sys.exit(app.exec())
